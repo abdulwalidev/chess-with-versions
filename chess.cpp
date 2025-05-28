@@ -3,6 +3,8 @@
 #include <cctype>
 #include <cmath>
 #include <sstream>
+#include <windows.h>
+
 #include <conio.h> // Windows only
 
 using namespace std;
@@ -48,21 +50,40 @@ void printBoard() {
     cout << "  a b c d e f g h\n";
 }
 
+void setColor(int color) {
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
+}
+
 void drawCursorBoard() {
-    cout << " a b c d e f g h\n";
+    const int padding = 10; // Adjust to center if needed
+    cout << string(padding, ' ') << "  a b c d e f g h\n";
     for (int i = BOARD_SIZE - 1; i >= 0; --i) {
-        cout << i + 1 << " ";
+        cout << string(padding, ' ') << i + 1 << " ";
         for (int j = 0; j < BOARD_SIZE; ++j) {
-            if (i == cursorRow && j == cursorCol) {
-                cout << "[" << board[i][j] << "]";
+            bool isCursor = (i == cursorRow && j == cursorCol);
+            bool isSelected = pieceSelected && i == selectedRow && j == selectedCol;
+            char piece = board[i][j];
+
+            if (isCursor || isSelected) setColor(112); // Highlight cursor/selection
+
+            if (piece == '-') {
+                setColor(isCursor || isSelected ? 112 : 7); // Default color
+                cout << "_ ";
+            }
+            else if (isupper(piece)) {
+                setColor(isCursor || isSelected ? 112 : 14); // White pieces: yellow
+                cout << piece << " ";
             }
             else {
-                cout << " " << board[i][j] << " ";
+                setColor(isCursor || isSelected ? 112 : 9); // Black pieces: blue
+                cout << piece << " ";
             }
+
+            setColor(7); // Reset color after each piece
         }
         cout << i + 1 << "\n";
     }
-    cout << " a b c d e f g h\n";
+    cout << string(padding, ' ') << "  a b c d e f g h\n";
 }
 
 // Convert chess notation to board coordinates
