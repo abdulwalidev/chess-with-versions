@@ -3,11 +3,13 @@
 #include <cctype>
 #include <cmath>
 #include <sstream>
+#include <conio.h> // Windows only
 
 using namespace std;
 
 const int BOARD_SIZE = 8;
 char board[BOARD_SIZE][BOARD_SIZE];
+int cursorRow = 7, cursorCol = 0; bool pieceSelected = false; int selectedRow, selectedCol;
 
 // Clear the screen
 void clearScreen() {
@@ -46,6 +48,23 @@ void printBoard() {
     cout << "  a b c d e f g h\n";
 }
 
+void drawCursorBoard() {
+    cout << " a b c d e f g h\n";
+    for (int i = BOARD_SIZE - 1; i >= 0; --i) {
+        cout << i + 1 << " ";
+        for (int j = 0; j < BOARD_SIZE; ++j) {
+            if (i == cursorRow && j == cursorCol) {
+                cout << "[" << board[i][j] << "]";
+            }
+            else {
+                cout << " " << board[i][j] << " ";
+            }
+        }
+        cout << i + 1 << "\n";
+    }
+    cout << " a b c d e f g h\n";
+}
+
 // Convert chess notation to board coordinates
 bool parsePosition(const string& position, int& row, int& col) {
     if (position.length() != 2) return false;
@@ -79,7 +98,7 @@ bool isValidRookMove(int srcRow, int srcCol, int destRow, int destCol, char play
     if (srcRow != destRow && srcCol != destCol) return false;
 
     int rowStep = (srcRow == destRow) ? 0 : ((srcRow < destRow) ? 1 : -1);
-    int colStep = (srcCol == destRow) ? 0 : ((srcCol < destCol) ? 1 : -1);
+    int colStep = (srcCol == destCol) ? 0 : ((srcCol < destCol) ? 1 : -1);
 
     int currentRow = srcRow + rowStep;
     int currentCol = srcCol + colStep;
@@ -188,21 +207,43 @@ bool makeMove(const string& move, char player) {
 // Main game loop
 void playGame() {
     char currentPlayer = 'w';
-    string move;
-
     while (true) {
         clearScreen();
-        printBoard();
-        cout << (currentPlayer == 'w' ? "White" : "Black") << "'s turn. Enter move (e.g., e2 e4): ";
-        getline(cin, move);
-
-        if (move == "quit") {
-            cout << "Game ended!\n";
-            break;
+        drawCursorBoard();
+        cout << (currentPlayer == 'w' ? "White" : "Black") << "'s turn. Use arrows to move, Enter to select, q to quit.\n";
+        int ch = _getch();
+        if (ch == 224) { // Arrow key prefix
+            int arrow = _getch();
+            switch (arrow) {
+            case 72: if (cursorRow < BOARD_SIZE - 1) cursorRow++; break; // up
+            case 80: if (cursorRow > 0) cursorRow--; break; // down
+            case 75: if (cursorCol > 0) cursorCol--; break; // left
+            case 77: if (cursorCol < BOARD_SIZE - 1) cursorCol++; break; // right
+            }
         }
-
-        if (makeMove(move, currentPlayer)) {
-            currentPlayer = (currentPlayer == 'w' ? 'b' : 'w');
+        else if (ch == 13) { // Enter key
+            if (!pieceSelected) {
+                if ((currentPlayer == 'w' && isupper(board[cursorRow][cursorCol])) || (currentPlayer == 'b' && islower(board[cursorRow][cursorCol]))) {
+                    selectedRow = cursorRow;
+                    selectedCol = cursorCol;
+                    pieceSelected = true;
+                }
+            }
+            else {
+                if (isValidMove(selectedRow, selectedCol, cursorRow, cursorCol, currentPlayer)) {
+                    board[cursorRow][cursorCol] = board[selectedRow][selectedCol];
+                    board[selectedRow][selectedCol] = '-';
+                    currentPlayer = (currentPlayer == 'w') ? 'b' : 'w';
+                }
+                else {
+                    cout << "Invalid move!\n";
+                    _getch(); // Pause to show error
+                }
+                pieceSelected = false;
+            }
+        }
+        else if (ch == 'q' || ch == 'Q') {
+            break;
         }
     }
 }
