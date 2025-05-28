@@ -1,83 +1,174 @@
+#include <SFML/Graphics.hpp>
 #include <iostream>
-#include <string>
 #include <cctype>
 #include <cmath>
-#include <sstream>
-#include <windows.h>
-#include <conio.h>
-
-using namespace std;
-
-bool possible[8][8] = { false };
 
 const int BOARD_SIZE = 8;
-char board[BOARD_SIZE][BOARD_SIZE];
-int cursorRow = 7, cursorCol = 0;
-bool pieceSelected = false;
-int selectedRow, selectedCol;
+const int TILE_SIZE = 100;
+const int WINDOW_SIZE = TILE_SIZE * BOARD_SIZE;
 
-bool whiteKingMoved = false;     // CASTLING
-bool blackKingMoved = false;     // CASTLING
-bool whiteRookLeftMoved = false; // CASTLING
+// Chess game state variables
+char board[BOARD_SIZE][BOARD_SIZE];
+bool whiteKingMoved = false;
+bool blackKingMoved = false;
+bool whiteRookLeftMoved = false;
 bool whiteRookRightMoved = false;
 bool blackRookLeftMoved = false;
 bool blackRookRightMoved = false;
 
-void clearScreen() {
-    cout << "\033[2J\033[1;1H";
-}
+struct ChessPiece {
+    char type;
+    bool isWhite;
+    float posX, posY; // Using individual floats instead of sf::Vector2f
+
+    void draw(sf::RenderWindow& window, int row, int col) {
+        sf::Color pieceColor = isWhite ? sf::Color(255, 215, 0) : sf::Color(0, 128, 0); // Golden vs Green
+
+        // Calculate center position of tile for perfect alignment
+        float centerX = col * TILE_SIZE + TILE_SIZE / 2.0f;
+        float centerY = row * TILE_SIZE + TILE_SIZE / 2.0f;
+        float pieceSize = TILE_SIZE * 0.7f; // 70% of tile size for better fit
+
+        switch (std::tolower(type)) {
+        case 'p': { // Pawn - Circle
+            sf::CircleShape pawn(pieceSize / 2);
+            pawn.setFillColor(pieceColor);
+            pawn.setOutlineThickness(2);
+            pawn.setOutlineColor(sf::Color::Black);
+            pawn.setOrigin(pieceSize / 2, pieceSize / 2); // Center origin
+            pawn.setPosition(centerX, centerY);
+            window.draw(pawn);
+            break;
+        }
+        case 'r': { // Rook - Rectangle
+            sf::RectangleShape rook;
+            rook.setSize(sf::Vector2f(pieceSize, pieceSize)); // FIX for Line 45
+
+            rook.setFillColor(pieceColor);
+            rook.setOutlineThickness(2);
+            rook.setOutlineColor(sf::Color::Black);
+            rook.setOrigin(pieceSize / 2, pieceSize / 2); // Center origin
+            rook.setPosition(centerX, centerY);
+            window.draw(rook);
+            break;
+        }
+        case 'n': { // Knight - Triangle
+            sf::CircleShape knight(pieceSize / 2, 3);
+            knight.setFillColor(pieceColor);
+            knight.setOutlineThickness(2);
+            knight.setOutlineColor(sf::Color::Black);
+            knight.setOrigin(pieceSize / 2, pieceSize / 2); // Center origin
+            knight.setPosition(centerX, centerY);
+            window.draw(knight);
+            break;
+        }
+        case 'b': { // Bishop - Diamond
+            sf::CircleShape bishop(pieceSize / 2, 4);
+            bishop.setFillColor(pieceColor);
+            bishop.setOutlineThickness(2);
+            bishop.setOutlineColor(sf::Color::Black);
+            bishop.setOrigin(pieceSize / 2, pieceSize / 2); // Center origin
+            bishop.setPosition(centerX, centerY);
+            bishop.setRotation(45);
+            window.draw(bishop);
+            break;
+        }
+        case 'q': { // Queen - Octagon
+            sf::CircleShape queen(pieceSize / 2, 8);
+            queen.setFillColor(pieceColor);
+            queen.setOutlineThickness(2);
+            queen.setOutlineColor(sf::Color::Black);
+            queen.setOrigin(pieceSize / 2, pieceSize / 2); // Center origin
+            queen.setPosition(centerX, centerY);
+            window.draw(queen);
+            break;
+        }
+        case 'k': { // King - Hexagon
+            sf::CircleShape king(pieceSize / 2, 6);
+            king.setFillColor(pieceColor);
+            king.setOutlineThickness(3);
+            king.setOutlineColor(sf::Color::Red);
+            king.setOrigin(pieceSize / 2, pieceSize / 2); // Center origin
+            king.setPosition(centerX, centerY);
+            window.draw(king);
+            break;
+        }
+        }
+    }
+};
+
+char currentPlayer = 'w';
+int selectedRow = -1, selectedCol = -1;
+bool pieceSelected = false;
 
 void initializeBoard() {
+    // Initialize pawns
     for (int i = 0; i < BOARD_SIZE; ++i) {
-        board[1][i] = 'p';
-        board[6][i] = 'P';
+        board[1][i] = 'p'; // Black pawns
+        board[6][i] = 'P'; // White pawns
     }
+
+    // Initialize other pieces
     const char white_pieces[] = { 'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R' };
     const char black_pieces[] = { 'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r' };
+
     for (int i = 0; i < BOARD_SIZE; ++i) {
-        board[0][i] = black_pieces[i];
-        board[7][i] = white_pieces[i];
+        board[0][i] = black_pieces[i]; // Black back row
+        board[7][i] = white_pieces[i]; // White back row
     }
-    for (int i = 2; i < 6; ++i)
-        for (int j = 0; j < BOARD_SIZE; ++j)
-            board[i][j] = '-';
-}
 
-void setColor(int color) {
-    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
-}
-
-void drawCursorBoard() {
-    const int padding = 10;
-    cout << string(padding + 7, ' ') << "  a b c d e f g h\n";
-    for (int i = BOARD_SIZE - 1; i >= 0; --i) {
-        cout << string(padding + 7, ' ') << i + 1 << " ";
+    // Initialize empty squares
+    for (int i = 2; i < 6; ++i) {
         for (int j = 0; j < BOARD_SIZE; ++j) {
-            char piece = board[i][j];
-            bool isCursor = (i == cursorRow && j == cursorCol);
-            bool isSelected = pieceSelected && i == selectedRow && j == selectedCol;
-            bool isPossible = possible[i][j];
-
-            if (piece == '-') setColor(8);
-            else if (isupper(piece)) setColor(15);
-            else setColor(11);
-
-            if (isSelected) setColor(79);
-            else if (isCursor) setColor(160);
-            else if (isPossible) setColor(10);
-
-            cout << (piece == '-' ? "_ " : string(1, piece) + " ");
-            setColor(7);
+            board[i][j] = '-';
         }
-        cout << i + 1 << "\n";
     }
-    cout << string(padding + 7, ' ') << "  a b c d e f g h\n";
+}
+
+void drawBoard(sf::RenderWindow& window) {
+    for (int row = 0; row < BOARD_SIZE; ++row) {
+        for (int col = 0; col < BOARD_SIZE; ++col) {
+            sf::RectangleShape tile;
+            
+            tile.setSize(sf::Vector2f(TILE_SIZE, TILE_SIZE)); // FIX for Line 131
+            tile.setPosition(col * TILE_SIZE, row * TILE_SIZE);
+
+            // Highlight selected square
+            if (pieceSelected && selectedRow == row && selectedCol == col) {
+                tile.setFillColor(sf::Color::Blue);
+            }
+            else {
+                tile.setFillColor((row + col) % 2 == 0 ? sf::Color(240, 217, 181) : sf::Color(181, 136, 99));
+            }
+            window.draw(tile);
+        }
+    }
+}
+
+void drawPieces(sf::RenderWindow& window) {
+    for (int row = 0; row < BOARD_SIZE; ++row) {
+        for (int col = 0; col < BOARD_SIZE; ++col) {
+            if (board[row][col] != '-') {
+                ChessPiece piece;
+                piece.type = board[row][col];
+                piece.isWhite = std::isupper(board[row][col]);
+                piece.posX = col * TILE_SIZE + TILE_SIZE / 2.0f;
+                piece.posY = row * TILE_SIZE + TILE_SIZE / 2.0f;
+                piece.draw(window, row, col);
+            }
+        }
+    }
 }
 
 bool isPathClear(int row, int col1, int col2) {
-    if (col1 > col2) swap(col1, col2);
-    for (int c = col1 + 1; c < col2; ++c)
+    if (col1 > col2) {
+        int temp = col1;
+        col1 = col2;
+        col2 = temp;
+    }
+    for (int c = col1 + 1; c < col2; ++c) {
         if (board[row][c] != '-') return false;
+    }
     return true;
 }
 
@@ -108,7 +199,7 @@ void performCastling(int row, int destCol) {
 
 bool isValidPawnMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     int direction = (player == 'w') ? -1 : 1;
-    bool isOpponentPiece = (player == 'w') ? islower(board[destRow][destCol]) : isupper(board[destRow][destCol]);
+    bool isOpponentPiece = (player == 'w') ? std::islower(board[destRow][destCol]) : std::isupper(board[destRow][destCol]);
 
     if (srcCol == destCol && board[destRow][destCol] == '-') {
         return (destRow - srcRow == direction) ||
@@ -124,30 +215,37 @@ bool isValidPawnMove(int srcRow, int srcCol, int destRow, int destCol, char play
 
 bool isValidRookMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     if (srcRow != destRow && srcCol != destCol) return false;
+
     int rowStep = (srcRow < destRow) ? 1 : (srcRow > destRow ? -1 : 0);
     int colStep = (srcCol < destCol) ? 1 : (srcCol > destCol ? -1 : 0);
+
     for (int i = srcRow + rowStep, j = srcCol + colStep; i != destRow || j != destCol; i += rowStep, j += colStep) {
         if (board[i][j] != '-') return false;
     }
+
     char target = board[destRow][destCol];
-    return target == '-' || (player == 'w' ? islower(target) : isupper(target));
+    return target == '-' || (player == 'w' ? std::islower(target) : std::isupper(target));
 }
 
 bool isValidBishopMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     if (abs(srcRow - destRow) != abs(srcCol - destCol)) return false;
+
     int rowStep = (srcRow < destRow) ? 1 : -1;
     int colStep = (srcCol < destCol) ? 1 : -1;
-    for (int i = srcRow + rowStep, j = srcCol + colStep; i != destRow; i += rowStep, j += colStep)
+
+    for (int i = srcRow + rowStep, j = srcCol + colStep; i != destRow; i += rowStep, j += colStep) {
         if (board[i][j] != '-') return false;
+    }
+
     char target = board[destRow][destCol];
-    return target == '-' || (player == 'w' ? islower(target) : isupper(target));
+    return target == '-' || (player == 'w' ? std::islower(target) : std::isupper(target));
 }
 
 bool isValidKnightMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     int dr = abs(srcRow - destRow), dc = abs(srcCol - destCol);
     char target = board[destRow][destCol];
     return (dr == 2 && dc == 1 || dr == 1 && dc == 2) &&
-        (target == '-' || (player == 'w' ? islower(target) : isupper(target)));
+        (target == '-' || (player == 'w' ? std::islower(target) : std::isupper(target)));
 }
 
 bool isValidQueenMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
@@ -157,18 +255,21 @@ bool isValidQueenMove(int srcRow, int srcCol, int destRow, int destCol, char pla
 
 bool isValidKingMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     if (isCastlingMove(srcRow, srcCol, destRow, destCol, player)) return true;
+
     int dr = abs(srcRow - destRow), dc = abs(srcCol - destCol);
     char target = board[destRow][destCol];
     return dr <= 1 && dc <= 1 &&
-        (target == '-' || (player == 'w' ? islower(target) : isupper(target)));
+        (target == '-' || (player == 'w' ? std::islower(target) : std::isupper(target)));
 }
 
 bool isValidMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     if (srcRow == destRow && srcCol == destCol) return false;
+
     char piece = board[srcRow][srcCol];
-    if (player == 'w' && !isupper(piece)) return false;
-    if (player == 'b' && !islower(piece)) return false;
-    piece = tolower(piece);
+    if (player == 'w' && !std::isupper(piece)) return false;
+    if (player == 'b' && !std::islower(piece)) return false;
+
+    piece = std::tolower(piece);
     switch (piece) {
     case 'p': return isValidPawnMove(srcRow, srcCol, destRow, destCol, player);
     case 'r': return isValidRookMove(srcRow, srcCol, destRow, destCol, player);
@@ -183,46 +284,26 @@ bool isValidMove(int srcRow, int srcCol, int destRow, int destCol, char player) 
 bool isKingInCheck(char player) {
     char king = (player == 'w') ? 'K' : 'k';
     int kr = -1, kc = -1;
-    for (int i = 0; i < 8; ++i)
-        for (int j = 0; j < 8; ++j)
-            if (board[i][j] == king) kr = i, kc = j;
-    char opponent = (player == 'w') ? 'b' : 'w';
-    for (int i = 0; i < 8; ++i)
-        for (int j = 0; j < 8; ++j)
-            if ((opponent == 'w' && isupper(board[i][j])) ||
-                (opponent == 'b' && islower(board[i][j])))
-                if (isValidMove(i, j, kr, kc, opponent)) return true;
-    return false;
-}
 
-bool hasAnyLegalMove(char player) {
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 8; ++j) {
-            char piece = board[i][j];
-            if ((player == 'w' && !isupper(piece)) || (player == 'b' && !islower(piece))) continue;
-            for (int ni = 0; ni < 8; ++ni)
-                for (int nj = 0; nj < 8; ++nj)
-                    if (isValidMove(i, j, ni, nj, player)) {
-                        char backup = board[ni][nj];
-                        board[ni][nj] = board[i][j];
-                        board[i][j] = '-';
-                        bool stillCheck = isKingInCheck(player);
-                        board[i][j] = board[ni][nj];
-                        board[ni][nj] = backup;
-                        if (!stillCheck) return true;
-                    }
+            if (board[i][j] == king) {
+                kr = i;
+                kc = j;
+            }
         }
+    }
+
+    char opponent = (player == 'w') ? 'b' : 'w';
+    for (int i = 0; i < 8; ++i) {
+        for (int j = 0; j < 8; ++j) {
+            if ((opponent == 'w' && std::isupper(board[i][j])) ||
+                (opponent == 'b' && std::islower(board[i][j]))) {
+                if (isValidMove(i, j, kr, kc, opponent)) return true;
+            }
+        }
+    }
     return false;
-}
-
-bool isCheckmate(char player) {
-    return isKingInCheck(player) && !hasAnyLegalMove(player);
-}
-
-void possibleMoves(int row, int col, char player) {
-    for (int i = 0; i < 8; ++i)
-        for (int j = 0; j < 8; ++j)
-            possible[i][j] = isValidMove(row, col, i, j, player);
 }
 
 void promotePawn(int row, int col, char player) {
@@ -230,93 +311,85 @@ void promotePawn(int row, int col, char player) {
     board[row][col] = newPiece;
 }
 
-void playGame() {
-    char currentPlayer = 'w';
-    while (true) {
-        clearScreen();
-        drawCursorBoard();
-        cout << endl << "\t        -> " << (currentPlayer == 'w' ? "UpperCase's" : "LowerCase's") << " Turn\n";
-
-        if (isCheckmate(currentPlayer)) {
-            cout << "\n\t CHECKMATE! " << (currentPlayer == 'w' ? "LowerCase" : "UpperCase") << " wins!\n";
-            cout << "\t Press any key to exit...";
-
-            break;
+void handleMove(int targetRow, int targetCol) {
+    if (!pieceSelected) {
+        char piece = board[targetRow][targetCol];
+        if ((currentPlayer == 'w' && std::isupper(piece)) ||
+            (currentPlayer == 'b' && std::islower(piece))) {
+            selectedRow = targetRow;
+            selectedCol = targetCol;
+            pieceSelected = true;
         }
-        else if (isKingInCheck(currentPlayer)) {
-            cout << "\n\t " << (currentPlayer == 'w' ? "UpperCase" : "LowerCase") << " is in CHECK!";
-        }
+    }
+    else {
+        if (isValidMove(selectedRow, selectedCol, targetRow, targetCol, currentPlayer)) {
+            char movedPiece = board[selectedRow][selectedCol];
+            char captured = board[targetRow][targetCol];
+            bool castling = isCastlingMove(selectedRow, selectedCol, targetRow, targetCol, currentPlayer);
 
-        int ch = _getch();
-        if (ch == 224) {
-            int arrow = _getch();
-            if (arrow == 72 && cursorRow < 7) cursorRow++;
-            else if (arrow == 80 && cursorRow > 0) cursorRow--;
-            else if (arrow == 75 && cursorCol > 0) cursorCol--;
-            else if (arrow == 77 && cursorCol < 7) cursorCol++;
-        }
-        else if (ch == 13) {
-            if (!pieceSelected) {
-                if ((currentPlayer == 'w' && isupper(board[cursorRow][cursorCol])) ||
-                    (currentPlayer == 'b' && islower(board[cursorRow][cursorCol]))) {
-                    selectedRow = cursorRow;
-                    selectedCol = cursorCol;
-                    pieceSelected = true;
-                    possibleMoves(selectedRow, selectedCol, currentPlayer);
-                }
+            // Make the move
+            board[targetRow][targetCol] = movedPiece;
+            board[selectedRow][selectedCol] = '-';
+            if (castling) performCastling(targetRow, targetCol);
+
+            // Check if move puts own king in check
+            if (isKingInCheck(currentPlayer)) {
+                // Undo the move
+                board[selectedRow][selectedCol] = movedPiece;
+                board[targetRow][targetCol] = captured;
+                if (castling) performCastling(targetRow, targetCol);
             }
             else {
-                if (isValidMove(selectedRow, selectedCol, cursorRow, cursorCol, currentPlayer)) {
-                    char movedPiece = board[selectedRow][selectedCol];
-                    char captured = board[cursorRow][cursorCol];
-                    bool castling = isCastlingMove(selectedRow, selectedCol, cursorRow, cursorCol, currentPlayer);
+                // Update castling flags - no more shenanigans with castling after pieces move
+                if (movedPiece == 'K') whiteKingMoved = true;
+                if (movedPiece == 'k') blackKingMoved = true;
+                if (movedPiece == 'R' && selectedCol == 0 && selectedRow == 7) whiteRookLeftMoved = true;
+                if (movedPiece == 'R' && selectedCol == 7 && selectedRow == 7) whiteRookRightMoved = true;
+                if (movedPiece == 'r' && selectedCol == 0 && selectedRow == 0) blackRookLeftMoved = true;
+                if (movedPiece == 'r' && selectedCol == 7 && selectedRow == 0) blackRookRightMoved = true;
 
-                    board[cursorRow][cursorCol] = movedPiece;
-                    board[selectedRow][selectedCol] = '-';
-                    if (castling) performCastling(cursorRow, cursorCol);
-
-                    if (isKingInCheck(currentPlayer)) {
-                        board[selectedRow][selectedCol] = movedPiece;
-                        board[cursorRow][cursorCol] = captured;
-                        if (castling) performCastling(cursorRow, cursorCol); // Undo castling
-                        cout << "\nInvalid move! King would be in check.\n";
-
-                    }
-                    else {
-                        // Update castling flags
-                        if (movedPiece == 'K') whiteKingMoved = true;
-                        if (movedPiece == 'k') blackKingMoved = true;
-                        if (movedPiece == 'R' && selectedCol == 0 && selectedRow == 7) whiteRookLeftMoved = true;
-                        if (movedPiece == 'R' && selectedCol == 7 && selectedRow == 7) whiteRookRightMoved = true;
-                        if (movedPiece == 'r' && selectedCol == 0 && selectedRow == 0) blackRookLeftMoved = true;
-                        if (movedPiece == 'r' && selectedCol == 7 && selectedRow == 0) blackRookRightMoved = true;
-
-                        // Promotion
-                        if ((movedPiece == 'P' && cursorRow == 0) || (movedPiece == 'p' && cursorRow == 7)) {
-                            promotePawn(cursorRow, cursorCol, currentPlayer);
-                        }
-
-                        currentPlayer = (currentPlayer == 'w') ? 'b' : 'w';
-                    }
+                // Pawn promotion
+                if ((movedPiece == 'P' && targetRow == 0) || (movedPiece == 'p' && targetRow == 7)) {
+                    promotePawn(targetRow, targetCol, currentPlayer);
                 }
-                else {
-                    cout << "Invalid move!\n";
 
-                }
-                pieceSelected = false;
-                for (int i = 0; i < 8; ++i)
-                    for (int j = 0; j < 8; ++j)
-                        possible[i][j] = false;
+                // Switch players
+                currentPlayer = (currentPlayer == 'w') ? 'b' : 'w';
             }
         }
-        else if (ch == 'q' || ch == 'Q') {
-            break;
-        }
+
+        pieceSelected = false;
+        selectedRow = -1;
+        selectedCol = -1;
     }
 }
 
 int main() {
+    sf::RenderWindow window(sf::VideoMode(WINDOW_SIZE, WINDOW_SIZE), "SFML Chess Game - Perfect Alignment");
     initializeBoard();
-    playGame();
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
+                window.close();
+            }
+
+            if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+                int col = event.mouseButton.x / TILE_SIZE;
+                int row = event.mouseButton.y / TILE_SIZE;
+
+                if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE) {
+                    handleMove(row, col);
+                }
+            }
+        }
+
+        window.clear(sf::Color::White);
+        drawBoard(window);
+        drawPieces(window);
+        window.display();
+    }
+
     return 0;
 }
