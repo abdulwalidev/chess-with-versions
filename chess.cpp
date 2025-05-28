@@ -4,25 +4,33 @@
 #include <cmath>
 #include <sstream>
 #include <windows.h>
-
-#include <conio.h> // Windows only
+#include <conio.h>
 
 using namespace std;
 
+bool possible[8][8] = { false };
+
 const int BOARD_SIZE = 8;
 char board[BOARD_SIZE][BOARD_SIZE];
-int cursorRow = 7, cursorCol = 0; bool pieceSelected = false; int selectedRow, selectedCol;
+int cursorRow = 7, cursorCol = 0;
+bool pieceSelected = false;
+int selectedRow, selectedCol;
 
-// Clear the screen
+bool whiteKingMoved = false;     // CASTLING
+bool blackKingMoved = false;     // CASTLING
+bool whiteRookLeftMoved = false; // CASTLING
+bool whiteRookRightMoved = false;
+bool blackRookLeftMoved = false;
+bool blackRookRightMoved = false;
+
 void clearScreen() {
     cout << "\033[2J\033[1;1H";
 }
 
-// Initialize the chessboard
 void initializeBoard() {
     for (int i = 0; i < BOARD_SIZE; ++i) {
-        board[1][i] = 'p'; // Black pawns
-        board[6][i] = 'P'; // White pawns
+        board[1][i] = 'p';
+        board[6][i] = 'P';
     }
     const char white_pieces[] = { 'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R' };
     const char black_pieces[] = { 'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r' };
@@ -30,24 +38,9 @@ void initializeBoard() {
         board[0][i] = black_pieces[i];
         board[7][i] = white_pieces[i];
     }
-    for (int i = 2; i < 6; ++i) {
-        for (int j = 0; j < BOARD_SIZE; ++j) {
+    for (int i = 2; i < 6; ++i)
+        for (int j = 0; j < BOARD_SIZE; ++j)
             board[i][j] = '-';
-        }
-    }
-}
-
-// Print the chessboard
-void printBoard() {
-    cout << "  a b c d e f g h\n";
-    for (int i = BOARD_SIZE - 1; i >= 0; --i) {
-        cout << i + 1 << " ";
-        for (int j = 0; j < BOARD_SIZE; ++j) {
-            cout << board[i][j] << " ";
-        }
-        cout << i + 1 << "\n";
-    }
-    cout << "  a b c d e f g h\n";
 }
 
 void setColor(int color) {
@@ -55,143 +48,127 @@ void setColor(int color) {
 }
 
 void drawCursorBoard() {
-    const int padding = 10; // Adjust to center if needed
-    cout << string(padding, ' ') << "  a b c d e f g h\n";
+    const int padding = 10;
+    cout << string(padding + 7, ' ') << "  a b c d e f g h\n";
     for (int i = BOARD_SIZE - 1; i >= 0; --i) {
-        cout << string(padding, ' ') << i + 1 << " ";
+        cout << string(padding + 7, ' ') << i + 1 << " ";
         for (int j = 0; j < BOARD_SIZE; ++j) {
+            char piece = board[i][j];
             bool isCursor = (i == cursorRow && j == cursorCol);
             bool isSelected = pieceSelected && i == selectedRow && j == selectedCol;
-            char piece = board[i][j];
+            bool isPossible = possible[i][j];
 
-            if (isCursor || isSelected) setColor(112); // Highlight cursor/selection
+            if (piece == '-') setColor(8);
+            else if (isupper(piece)) setColor(15);
+            else setColor(11);
 
-            if (piece == '-') {
-                setColor(isCursor || isSelected ? 112 : 7); // Default color
-                cout << "_ ";
-            }
-            else if (isupper(piece)) {
-                setColor(isCursor || isSelected ? 112 : 14); // White pieces: yellow
-                cout << piece << " ";
-            }
-            else {
-                setColor(isCursor || isSelected ? 112 : 9); // Black pieces: blue
-                cout << piece << " ";
-            }
+            if (isSelected) setColor(79);
+            else if (isCursor) setColor(160);
+            else if (isPossible) setColor(10);
 
-            setColor(7); // Reset color after each piece
+            cout << (piece == '-' ? "_ " : string(1, piece) + " ");
+            setColor(7);
         }
         cout << i + 1 << "\n";
     }
-    cout << string(padding, ' ') << "  a b c d e f g h\n";
+    cout << string(padding + 7, ' ') << "  a b c d e f g h\n";
 }
 
-// Convert chess notation to board coordinates
-bool parsePosition(const string& position, int& row, int& col) {
-    if (position.length() != 2) return false;
-    col = position[0] - 'a';
-    row = position[1] - '1';
-    return row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE;
+bool isPathClear(int row, int col1, int col2) {
+    if (col1 > col2) swap(col1, col2);
+    for (int c = col1 + 1; c < col2; ++c)
+        if (board[row][c] != '-') return false;
+    return true;
 }
 
-// Validate pawn moves
+bool isCastlingMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
+    if (player == 'w' && srcRow == 7 && srcCol == 4 && destRow == 7 && (destCol == 6 || destCol == 2)) {
+        if (whiteKingMoved) return false;
+        if (destCol == 6 && !whiteRookRightMoved && board[7][7] == 'R' && isPathClear(7, 4, 7)) return true;
+        if (destCol == 2 && !whiteRookLeftMoved && board[7][0] == 'R' && isPathClear(7, 0, 4)) return true;
+    }
+    if (player == 'b' && srcRow == 0 && srcCol == 4 && destRow == 0 && (destCol == 6 || destCol == 2)) {
+        if (blackKingMoved) return false;
+        if (destCol == 6 && !blackRookRightMoved && board[0][7] == 'r' && isPathClear(0, 4, 7)) return true;
+        if (destCol == 2 && !blackRookLeftMoved && board[0][0] == 'r' && isPathClear(0, 0, 4)) return true;
+    }
+    return false;
+}
+
+void performCastling(int row, int destCol) {
+    if (destCol == 6) {
+        board[row][5] = board[row][7];
+        board[row][7] = '-';
+    }
+    else if (destCol == 2) {
+        board[row][3] = board[row][0];
+        board[row][0] = '-';
+    }
+}
+
 bool isValidPawnMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
-    int direction = (player == 'w') ? -1 : 1; // White pawns move up, black down
+    int direction = (player == 'w') ? -1 : 1;
     bool isOpponentPiece = (player == 'w') ? islower(board[destRow][destCol]) : isupper(board[destRow][destCol]);
 
-    // Regular move
     if (srcCol == destCol && board[destRow][destCol] == '-') {
         return (destRow - srcRow == direction) ||
             (srcRow == (player == 'w' ? 6 : 1) && destRow - srcRow == 2 * direction && board[srcRow + direction][srcCol] == '-');
     }
 
-    // Capture move
-    if (abs(srcCol - destCol) == 1 && destRow - srcRow == direction &&
-        board[destRow][destCol] != '-' && isOpponentPiece) {
+    if (abs(srcCol - destCol) == 1 && destRow - srcRow == direction && isOpponentPiece) {
         return true;
     }
 
     return false;
 }
 
-// Validate rook moves
 bool isValidRookMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     if (srcRow != destRow && srcCol != destCol) return false;
-
-    int rowStep = (srcRow == destRow) ? 0 : ((srcRow < destRow) ? 1 : -1);
-    int colStep = (srcCol == destCol) ? 0 : ((srcCol < destCol) ? 1 : -1);
-
-    int currentRow = srcRow + rowStep;
-    int currentCol = srcCol + colStep;
-
-    // Check path is clear
-    while (currentRow != destRow || currentCol != destCol) {
-        if (board[currentRow][currentCol] != '-') return false;
-        currentRow += (currentRow != destRow ? rowStep : 0);
-        currentCol += (currentCol != destCol ? colStep : 0);
+    int rowStep = (srcRow < destRow) ? 1 : (srcRow > destRow ? -1 : 0);
+    int colStep = (srcCol < destCol) ? 1 : (srcCol > destCol ? -1 : 0);
+    for (int i = srcRow + rowStep, j = srcCol + colStep; i != destRow || j != destCol; i += rowStep, j += colStep) {
+        if (board[i][j] != '-') return false;
     }
-
-    return board[destRow][destCol] == '-' ||
-        (player == 'w' ? islower(board[destRow][destCol]) : isupper(board[destRow][destCol]));
+    char target = board[destRow][destCol];
+    return target == '-' || (player == 'w' ? islower(target) : isupper(target));
 }
 
-// Validate bishop moves
 bool isValidBishopMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     if (abs(srcRow - destRow) != abs(srcCol - destCol)) return false;
-
     int rowStep = (srcRow < destRow) ? 1 : -1;
     int colStep = (srcCol < destCol) ? 1 : -1;
-
-    int currentRow = srcRow + rowStep;
-    int currentCol = srcCol + colStep;
-
-    // Check path is clear
-    while (currentRow != destRow) {
-        if (board[currentRow][currentCol] != '-') return false;
-        currentRow += rowStep;
-        currentCol += colStep;
-    }
-
-    return board[destRow][destCol] == '-' ||
-        (player == 'w' ? islower(board[destRow][destCol]) : isupper(board[destRow][destCol]));
+    for (int i = srcRow + rowStep, j = srcCol + colStep; i != destRow; i += rowStep, j += colStep)
+        if (board[i][j] != '-') return false;
+    char target = board[destRow][destCol];
+    return target == '-' || (player == 'w' ? islower(target) : isupper(target));
 }
 
-// Validate knight moves
 bool isValidKnightMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
-    int rowDiff = abs(srcRow - destRow);
-    int colDiff = abs(srcCol - destCol);
-    char destPiece = board[destRow][destCol];
-
-    return (rowDiff == 2 && colDiff == 1 || rowDiff == 1 && colDiff == 2) &&
-        (destPiece == '-' || (player == 'w' ? islower(destPiece) : isupper(destPiece)));
+    int dr = abs(srcRow - destRow), dc = abs(srcCol - destCol);
+    char target = board[destRow][destCol];
+    return (dr == 2 && dc == 1 || dr == 1 && dc == 2) &&
+        (target == '-' || (player == 'w' ? islower(target) : isupper(target)));
 }
 
-// Validate queen moves
 bool isValidQueenMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
     return isValidRookMove(srcRow, srcCol, destRow, destCol, player) ||
         isValidBishopMove(srcRow, srcCol, destRow, destCol, player);
 }
 
-// Validate king moves
 bool isValidKingMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
-    int rowDiff = abs(srcRow - destRow);
-    int colDiff = abs(srcCol - destCol);
-    char destPiece = board[destRow][destCol];
-
-    return rowDiff <= 1 && colDiff <= 1 &&
-        (destPiece == '-' || (player == 'w' ? islower(destPiece) : isupper(destPiece)));
+    if (isCastlingMove(srcRow, srcCol, destRow, destCol, player)) return true;
+    int dr = abs(srcRow - destRow), dc = abs(srcCol - destCol);
+    char target = board[destRow][destCol];
+    return dr <= 1 && dc <= 1 &&
+        (target == '-' || (player == 'w' ? islower(target) : isupper(target)));
 }
 
-// Validate moves for a piece
 bool isValidMove(int srcRow, int srcCol, int destRow, int destCol, char player) {
-    // First, check if source and destination are different
     if (srcRow == destRow && srcCol == destCol) return false;
-
     char piece = board[srcRow][srcCol];
     if (player == 'w' && !isupper(piece)) return false;
     if (player == 'b' && !islower(piece)) return false;
     piece = tolower(piece);
-
     switch (piece) {
     case 'p': return isValidPawnMove(srcRow, srcCol, destRow, destCol, player);
     case 'r': return isValidRookMove(srcRow, srcCol, destRow, destCol, player);
@@ -203,64 +180,133 @@ bool isValidMove(int srcRow, int srcCol, int destRow, int destCol, char player) 
     }
 }
 
-// Execute a move
-bool makeMove(const string& move, char player) {
-    // Trim whitespace
-    stringstream ss(move);
-    string src, dest;
-    ss >> src >> dest;
-
-    int srcRow, srcCol, destRow, destCol;
-    if (!parsePosition(src, srcRow, srcCol) || !parsePosition(dest, destRow, destCol)) {
-        cout << "Invalid move format!\n";
-        return false;
-    }
-
-    if (isValidMove(srcRow, srcCol, destRow, destCol, player)) {
-        board[destRow][destCol] = board[srcRow][srcCol];
-        board[srcRow][srcCol] = '-';
-        return true;
-    }
-    cout << "Invalid move!\n";
+bool isKingInCheck(char player) {
+    char king = (player == 'w') ? 'K' : 'k';
+    int kr = -1, kc = -1;
+    for (int i = 0; i < 8; ++i)
+        for (int j = 0; j < 8; ++j)
+            if (board[i][j] == king) kr = i, kc = j;
+    char opponent = (player == 'w') ? 'b' : 'w';
+    for (int i = 0; i < 8; ++i)
+        for (int j = 0; j < 8; ++j)
+            if ((opponent == 'w' && isupper(board[i][j])) ||
+                (opponent == 'b' && islower(board[i][j])))
+                if (isValidMove(i, j, kr, kc, opponent)) return true;
     return false;
 }
 
-// Main game loop
+bool hasAnyLegalMove(char player) {
+    for (int i = 0; i < 8; ++i)
+        for (int j = 0; j < 8; ++j) {
+            char piece = board[i][j];
+            if ((player == 'w' && !isupper(piece)) || (player == 'b' && !islower(piece))) continue;
+            for (int ni = 0; ni < 8; ++ni)
+                for (int nj = 0; nj < 8; ++nj)
+                    if (isValidMove(i, j, ni, nj, player)) {
+                        char backup = board[ni][nj];
+                        board[ni][nj] = board[i][j];
+                        board[i][j] = '-';
+                        bool stillCheck = isKingInCheck(player);
+                        board[i][j] = board[ni][nj];
+                        board[ni][nj] = backup;
+                        if (!stillCheck) return true;
+                    }
+        }
+    return false;
+}
+
+bool isCheckmate(char player) {
+    return isKingInCheck(player) && !hasAnyLegalMove(player);
+}
+
+void possibleMoves(int row, int col, char player) {
+    for (int i = 0; i < 8; ++i)
+        for (int j = 0; j < 8; ++j)
+            possible[i][j] = isValidMove(row, col, i, j, player);
+}
+
+void promotePawn(int row, int col, char player) {
+    char newPiece = (player == 'w') ? 'Q' : 'q';
+    board[row][col] = newPiece;
+}
+
 void playGame() {
     char currentPlayer = 'w';
     while (true) {
         clearScreen();
         drawCursorBoard();
-        cout << (currentPlayer == 'w' ? "White" : "Black") << "'s turn. Use arrows to move, Enter to select, q to quit.\n";
-        int ch = _getch();
-        if (ch == 224) { // Arrow key prefix
-            int arrow = _getch();
-            switch (arrow) {
-            case 72: if (cursorRow < BOARD_SIZE - 1) cursorRow++; break; // up
-            case 80: if (cursorRow > 0) cursorRow--; break; // down
-            case 75: if (cursorCol > 0) cursorCol--; break; // left
-            case 77: if (cursorCol < BOARD_SIZE - 1) cursorCol++; break; // right
-            }
+        cout << endl << "\t        -> " << (currentPlayer == 'w' ? "UpperCase's" : "LowerCase's") << " Turn\n";
+
+        if (isCheckmate(currentPlayer)) {
+            cout << "\n\t CHECKMATE! " << (currentPlayer == 'w' ? "LowerCase" : "UpperCase") << " wins!\n";
+            cout << "\t Press any key to exit...";
+
+            break;
         }
-        else if (ch == 13) { // Enter key
+        else if (isKingInCheck(currentPlayer)) {
+            cout << "\n\t " << (currentPlayer == 'w' ? "UpperCase" : "LowerCase") << " is in CHECK!";
+        }
+
+        int ch = _getch();
+        if (ch == 224) {
+            int arrow = _getch();
+            if (arrow == 72 && cursorRow < 7) cursorRow++;
+            else if (arrow == 80 && cursorRow > 0) cursorRow--;
+            else if (arrow == 75 && cursorCol > 0) cursorCol--;
+            else if (arrow == 77 && cursorCol < 7) cursorCol++;
+        }
+        else if (ch == 13) {
             if (!pieceSelected) {
-                if ((currentPlayer == 'w' && isupper(board[cursorRow][cursorCol])) || (currentPlayer == 'b' && islower(board[cursorRow][cursorCol]))) {
+                if ((currentPlayer == 'w' && isupper(board[cursorRow][cursorCol])) ||
+                    (currentPlayer == 'b' && islower(board[cursorRow][cursorCol]))) {
                     selectedRow = cursorRow;
                     selectedCol = cursorCol;
                     pieceSelected = true;
+                    possibleMoves(selectedRow, selectedCol, currentPlayer);
                 }
             }
             else {
                 if (isValidMove(selectedRow, selectedCol, cursorRow, cursorCol, currentPlayer)) {
-                    board[cursorRow][cursorCol] = board[selectedRow][selectedCol];
+                    char movedPiece = board[selectedRow][selectedCol];
+                    char captured = board[cursorRow][cursorCol];
+                    bool castling = isCastlingMove(selectedRow, selectedCol, cursorRow, cursorCol, currentPlayer);
+
+                    board[cursorRow][cursorCol] = movedPiece;
                     board[selectedRow][selectedCol] = '-';
-                    currentPlayer = (currentPlayer == 'w') ? 'b' : 'w';
+                    if (castling) performCastling(cursorRow, cursorCol);
+
+                    if (isKingInCheck(currentPlayer)) {
+                        board[selectedRow][selectedCol] = movedPiece;
+                        board[cursorRow][cursorCol] = captured;
+                        if (castling) performCastling(cursorRow, cursorCol); // Undo castling
+                        cout << "\nInvalid move! King would be in check.\n";
+
+                    }
+                    else {
+                        // Update castling flags
+                        if (movedPiece == 'K') whiteKingMoved = true;
+                        if (movedPiece == 'k') blackKingMoved = true;
+                        if (movedPiece == 'R' && selectedCol == 0 && selectedRow == 7) whiteRookLeftMoved = true;
+                        if (movedPiece == 'R' && selectedCol == 7 && selectedRow == 7) whiteRookRightMoved = true;
+                        if (movedPiece == 'r' && selectedCol == 0 && selectedRow == 0) blackRookLeftMoved = true;
+                        if (movedPiece == 'r' && selectedCol == 7 && selectedRow == 0) blackRookRightMoved = true;
+
+                        // Promotion
+                        if ((movedPiece == 'P' && cursorRow == 0) || (movedPiece == 'p' && cursorRow == 7)) {
+                            promotePawn(cursorRow, cursorCol, currentPlayer);
+                        }
+
+                        currentPlayer = (currentPlayer == 'w') ? 'b' : 'w';
+                    }
                 }
                 else {
                     cout << "Invalid move!\n";
-                    _getch(); // Pause to show error
+
                 }
                 pieceSelected = false;
+                for (int i = 0; i < 8; ++i)
+                    for (int j = 0; j < 8; ++j)
+                        possible[i][j] = false;
             }
         }
         else if (ch == 'q' || ch == 'Q') {
